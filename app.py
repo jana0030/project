@@ -4,6 +4,8 @@ import os
 import bcrypt
 from bcrypt import gensalt, hashpw, checkpw
 from sqlalchemy import LargeBinary
+import bleach
+
 
 
 #app = Flask(__name__)
@@ -35,6 +37,15 @@ class User(db.Model):
 
     def __repr__(self):
         return f"<User {self.username}, Role {self.role}>"
+    
+# Define the Comment model
+class Comment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user = db.Column(db.String(100), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+
+    def __repr__(self):
+        return f"<Comment by {self.user}>"
 
 
 @app.before_request
@@ -183,7 +194,7 @@ def profile(username):
     return render_template('profile.html', user=user)  
 
 
-@app.route('/dashboard')
+@app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     if 'username' not in session:
         return redirect(url_for('login'))
@@ -191,8 +202,25 @@ def dashboard():
     # Fetch the user from the database
     user = User.query.filter_by(username=session['username']).first()
 
-    return render_template('dashboard.html', user=user)  
+    # Handle comment submission
+    if request.method == 'POST':
+        content = request.form.get('content')
 
+        # Sanitize the comment content to avoid XSS
+        sanitized_content = bleach.clean(content)
+
+        # Save the sanitized comment to the database
+        comment = Comment(user=user.username, content=sanitized_content)
+        db.session.add(comment)
+        db.session.commit()
+
+        # Redirect back to the dashboard after posting a comment
+        return redirect(url_for('dashboard'))
+
+    # Fetch all comments to display on the dashboard
+    comments = Comment.query.all()
+
+    return render_template('dashboard.html', user=user, comments=comments)
 
 
 
